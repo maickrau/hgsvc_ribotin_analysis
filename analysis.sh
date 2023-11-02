@@ -69,6 +69,9 @@ wc -l samples_with_m*
 #  62 samples_with_morph_major_5.8s_and_18s.txt
 # all samples have a morph with the major 5.8s and 18s allele !
 
+# most covered individual morph with major 5.8s and 18s alleles per sample
+cut -f 1,4 -d '_' < morphs_with_major_5.8s_and_18s.txt | sed 's/coverage//g' | tr '_' '\t' | awk '{print $2 "\t" $1}' | sort -n | awk '{coverage[$2] = $1;}END{for (sample in coverage) { print sample "\t" coverage[sample];}}' | less
+
 # sample with most coverage in major 5.8s & 18s morphs
 awk '{print $2 "\t" $1;}' < total_coverage_major_5.8s_and_18s_per_sample.txt | sort -nr | head -n 1
 # 10042 NA24385
