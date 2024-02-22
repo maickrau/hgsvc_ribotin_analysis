@@ -63,5 +63,6 @@ with open(morph_paf_file) as f:
 		assert query_end_pos is not None
 		query_start_pos += int(parts[2])
 		query_end_pos += int(parts[2])
-		print(">" + parts[0] + "_" + str(query_start_pos) + "_" + str(query_end_pos))
-		print(morph_seqs[parts[0]][query_start_pos:query_end_pos])
+		if query_end_pos > query_start_pos:
+			print(">" + parts[0] + "_" + str(query_start_pos) + "_" + str(query_end_pos))
+			print(morph_seqs[parts[0]][query_start_pos:query_end_pos])

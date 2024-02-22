@@ -10,12 +10,16 @@ cp ribotin/template_seqs/rDNA_one_unit.fasta .
 minimap2 -x asm20 -X -c --eqx -t 24 merged_morphs.fa merged_morphs.fa > alns_ava.paf
 minimap2 -x asm20 -c --eqx -t 24 rDNA_one_unit.fasta merged_morphs.fa > alns_to_ref.paf
 minimap2 -x asm20 -c --eqx -t 24 merged_consensuses.fa merged_morphs.fa > alns_to_consensus.paf
+minimap2 -x asm20 -a -t 24 rDNA_one_unit.fasta merged_morphs.fa | samtools view -b | samtools sort > alns_to_ref.bam
+samtools index -b alns_to_ref.bam
+winnowmap -x asm20 -a -t 24 rDNA_one_unit.fasta merged_morphs.fa | samtools view -b | samtools sort > alns_to_ref_winnowmap.bam
+samtools index -b alns_to_ref_winnowmap.bam
 
 # morph most similar to reference
 awk '$4-$3>$2*0.9' < alns_to_ref.paf | cut -f 6,7,13 | sed 's/NM:i://g' | awk '{error_rate = $3/$2; print error_rate "\t" $1}' | sort -nr | awk '{rate_per_ref[$2] = $1;}END{for (ref in rate_per_ref){print ref "\t" rate_per_ref[ref];}}' | less
 # morph most similar to consensuses in the same sample & tangle
 awk 'substr($1,1,16)==substr($6,1,16)' | awk '$4-$3>$2*0.9' < alns_to_consensus.paf | cut -f 6,7,13 | sed 's/NM:i://g' | awk '{error_rate = $3/$2; print error_rate "\t" $1}' | sort -nr | awk '{rate_per_ref[$2] = $1;}END{for (ref in rate_per_ref){print ref "\t" rate_per_ref[ref];}}' | less
-# some of them are reasonableor even identical, probably because of the verkko mode per-chromosome tangle separation
+# some of them are reasonable or even identical, probably because of the verkko mode per-chromosome tangle separation
 
 # extract 5.8s, 18s, 28s sequences per morph
 ./extract_morph_ref_aligned_seq.py merged_morphs.fa alns_to_ref.paf 6597 6753 > 5.8s.fa
@@ -78,3 +82,52 @@ awk '{print $2 "\t" $1;}' < total_coverage_major_5.8s_and_18s_per_sample.txt | s
 # sample with least coverage in major 5.8s & 18s morphs
 awk '{print $2 "\t" $1;}' < total_coverage_major_5.8s_and_18s_per_sample.txt | sort -nr | tail -n 1
 # 1181 HG02282
+
+awk 'substr($1,1,16)!=substr($6,1,16)' < alns_ava.paf | awk '$4-$3>$2*0.9&&$9-$8>$7*0.9' > alns_ava_nonself_fullength.paf
+seqwish -s merged_morphs.fa -p alns_ava_nonself_fullength.paf -g morphgraph.gfa
+
+grep -v '>' < 5.8s.fa | awk '{print length($0);}' | sort -n > lens_5.8s.csv
+grep -v '>' < 18s.fa | awk '{print length($0);}' | sort -n > lens_18s.csv
+grep -v '>' < 28s.fa | awk '{print length($0);}' | sort -n > lens_28s.csv
+grep -v '>' < merged_morphs.fa | awk '{print length($0);}' | sort -n > lens_morphs.csv
+
+# median gene lengths
+head -n 1039 < lens_5.8s.csv | tail -n 1
+# 156
+head -n 1039 < lens_18s.csv | tail -n 1
+# 1868
+head -n 1039 < lens_28s.csv | tail -n 1
+# 5071
+head -n 1039 < lens_morphs.csv | tail -n 1
+# 44614
+
+./extract_morph_ref_aligned_seq.py merged_morphs.fa alns_to_ref.paf 20639 25081 > LR1.fa
+./extract_morph_ref_aligned_seq.py merged_morphs.fa alns_to_ref.paf 25083 29617 > LR2.fa
+./extract_morph_ref_aligned_seq.py merged_morphs.fa alns_to_ref.paf 13494 15552 > TR1.fa
+
+grep -v '>' < LR1.fa | awk '{print length($0);}' | sort -n > lens_LR1.csv
+grep -v '>' < LR2.fa | awk '{print length($0);}' | sort -n > lens_LR2.csv
+grep -v '>' < TR1.fa | awk '{print length($0);}' | sort -n > lens_TR1.csv
+
+head -n 1039 < lens_LR1.csv | tail -n 1
+# 4417
+head -n 1039 < lens_LR2.csv | tail -n 1
+# 4539
+head -n 1039 < lens_TR1.csv | tail -n 1
+# 1970
+
+Rscript ./plot_gene_lens.Rscript
+
+
+# seqwish based SNP phylogeny
+
+minimap2 -x asm20 -X -c --eqx -t 24 merged_morphs.fa merged_morphs.fa > alns_ava.paf
+awk '$1!=$6 && $4-$3>$2*0.99 && $9-$8>$7*0.99' < alns_ava.paf > alns_ava_nonself_fullength.paf
+seqwish -t 16 -s merged_morphs.fa -p alns_ava_nonself_fullength.paf -g morphgraph.gfa
+# find the component with the most morphs, pick the nodes in bandage, put them to big_component_nodes.txt
+./get_subgraph.py big_component_nodes.txt < morphgraph.gfa > subgraph.gfa
+./extract_seqwish_snps.py < subgraph.gfa > seqwish_snps_big_component.phy
+/usr/bin/time -v raxml-ng --all --model GTR+G --tree pars{50},rand{50} --seed 12345 --msa seqwish_snps_big_component.phy 1> stdout_raxml.txt 2> stderr_raxml.txt
+
+awk '$1!=$6 && $4-$3>20000 && $9-$8>20000' < ../alns_ava.paf > alns_ava_noself_20k.paf
+seqwish -t 16 -s merged_morphs.fa -p alns_ava_noself_20k.paf -g morphgraph.gfa
